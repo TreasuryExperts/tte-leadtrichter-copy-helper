@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>Leadtrichter</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: system-ui, Segoe UI, sans-serif;
+      margin: 0; padding: 24px; min-height: 100vh;
+      background: #0f172a; color: #fff;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      text-align: center;
+    }
+    h1 { font-size: 1.25rem; margin: 0 0 10px; }
+    p { margin: 0 0 20px; line-height: 1.5; max-width: 340px; color: #cbd5e1; }
+    button {
+      width: 100%; max-width: 340px; padding: 18px; margin: 8px 0;
+      border: 0; border-radius: 12px; font-size: 1.05rem; font-weight: 700;
+      cursor: pointer; background: #0a66c2; color: #fff;
+    }
+    .ok { color: #86efac; font-weight: 600; }
+    .err { color: #fca5a5; }
+  </style>
+</head>
+<body>
+  <h1 id="title">Leadtrichter</h1>
+  <p id="hint">Einmal tippen — Text wird kopiert, LinkedIn öffnet sich.<br>Danach: lange drücken → Einfügen → senden.</p>
+  <button id="go" type="button">Text kopieren &amp; LinkedIn öffnen</button>
+  <script>
+    async function decodePayloadAsync(token) {
+      if (!token || token.length < 3) throw new Error("bad token");
+      const mode = token[0];
+      const raw = token.slice(2);
+      const pad = raw.length % 4 ? "=".repeat(4 - (raw.length % 4)) : "";
+      const b64 = raw.replace(/-/g, "+").replace(/_/g, "/") + pad;
+      const binStr = atob(b64);
+      const bytes = Uint8Array.from(binStr, c => c.charCodeAt(0));
+      let jsonBytes;
+      if (mode === "g") {
+        const ds = new DecompressionStream("gzip");
+        const stream = new Blob([bytes]).stream().pipeThrough(ds);
+        jsonBytes = await new Response(stream).arrayBuffer();
+      } else {
+        jsonBytes = bytes.buffer;
+      }
+      return JSON.parse(new TextDecoder().decode(jsonBytes));
+    }
+
+    async function copyText(text) {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+        return;
+      }
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.setAttribute("readonly", "");
+      ta.style.position = "fixed";
+      ta.style.left = "-9999px";
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+    }
+
+    const token = new URLSearchParams(location.search).get("d") || "";
+    const title = document.getElementById("title");
+    const hint = document.getElementById("hint");
+    const go = document.getElementById("go");
+
+    decodePayloadAsync(token).then((d) => {
+      title.textContent = d.n || "Leadtrichter";
+      go.onclick = async () => {
+        try {
+          await copyText(d.m || "");
+          hint.innerHTML = '<span class="ok">Text kopiert!</span><br>In LinkedIn: lange drücken → Einfügen → senden.';
+          if (d.l) setTimeout(() => { location.href = d.l; }, 400);
+        } catch (e) {
+          hint.innerHTML = '<span class="err">Kopieren fehlgeschlagen. Bitte erneut tippen.</span>';
+        }
+      };
+    }).catch(() => {
+      hint.innerHTML = '<span class="err">Link ungültig. Bitte aus der aktuellen Briefing-Mail öffnen.</span>';
+      go.style.display = "none";
+    });
+  </script>
+</body>
+</html>
